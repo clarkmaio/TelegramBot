@@ -23,8 +23,6 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Conve
 # --------------------------------------------------------------
 
 PLOT_PATH = 'C:\\Users\\pc\\workspace\\TelegramBot\\OdePlotBot\\plot'
-Y0 = 0
-X_INTERVAL = (0,1)
 
 
 # Enable logging
@@ -33,19 +31,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 logger = logging.getLogger(__name__)
 
-
-
-
-def check_ode(ode_str: str):
-    '''Parse ode formula'''
-
-    ode_str = ode_str.replace(' ','')
-
-    if ode_str.startswith("y'="):
-        return 0, ode_str, f"Your ODE: {ode_str}"
-    else:
-        logger.info("ODE formula should starts with y' ")
-        return 1, ode_str, "ODE formula should starts with y'= "
 
 
 class OdeSolver(object):
@@ -133,78 +118,114 @@ class OdeSolver(object):
 # ----------------------------------------------------------
 
 
-def _emoji():
+class OdeBot(object):
 
-     emoji_str = '''
-     ʕ•́ᴥ•̀ʔっ
-     '''
-     return emoji_str
+    def __init__(self, Y0 = 1, X_INTERVAL = (0,5)):
 
-def start(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text=_emoji())
-    context.bot.send_message(chat_id=update.effective_chat.id, text="I'am OdePlotBot. Write down a first order ode to plot the solution \n ATTENTION: I can work only with equation of the following form: y'=f(x,y) \n Example: y' = cos(y)")
-
-def set_y0(update, context):
-
-    try:
-        new_Y0 = float(update.message.text)
-        logger.info(f'Setting Y0: {new_Y0}')
-        Y0 = new_Y0
-        context.bot.send_message(chat_id=update.effective_chat.id, text=f'New initial condition: {Y0}')
-    except:
-        logger.info(f'Can not set Y0: {update.message.text}')
-        context.bot.send_message(chat_id=update.effective_chat.id, text=f'Can not set Y0: {update.message.text}')
-
-def set_x_interval(update, context):
-    try:
-        x_interval_val = update.message.text.split(' ')
-        new_X_INTERVAL = (float(x_interval_val[0]), float(x_interval_val[1]))
-        X_INTERVAL = new_X_INTERVAL
-    except:
-        logger.info(f'Can not set Y0: {update.message.text}')
-        context.bot.send_message(chat_id=update.effective_chat.id, text=f'Can not set X_INTERVAL: {update.message.text}')
+        self.Y0 = Y0
+        self.X_INTERVAL = X_INTERVAL
 
 
-def reset_setting(update, context):
+    def _emoji(self):
 
-    logger.info('Reset global variables')
-    context.bot.send_message(chat_id=update.effective_chat.id, text='Settings resetted')
-    Y0 = 1
-    X_INTERVAL = (0,1)
+         emoji_str = '''
+         ʕ•́ᴥ•̀ʔっ
+         '''
+         return emoji_str
 
-def current_settings(update, context):
-    logger.info(f'Print current settings. Y0: {Y0}. X_INTERVAL: {X_INTERVAL}')
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f'Current settings are: Y0 --> {Y0}. X_INTERVAL --> {X_INTERVAL}')
+    def start(self, update, context):
+        context.bot.send_message(chat_id=update.effective_chat.id, text=self._emoji())
+        context.bot.send_message(chat_id=update.effective_chat.id, text="I'am OdePlotBot. Write down a first order ode to plot the solution \n ATTENTION: I can work only with equation of the following form: y'=f(x,y) \n Example: y' = cos(y)")
+
+    def set_y0(self, update, context):
+
+        try:
+            tmp = update.message.text.split(' ')[1]
+            tmp = tmp.replace(' ', '')
+            new_Y0 = float(tmp)
+            logger.info(f'Setting Y0: {new_Y0}')
+            self.Y0 = new_Y0
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f'New initial condition: Y0={self.Y0}')
+        except Exception as e:
+            logger.info(e)
+            logger.info(f'Can not set Y0: {update.message.text}')
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f'Can not set Y0: {update.message.text}. Example of correct syntax: "/set_y0 3.5"')
+
+    def set_x_interval(self, update, context):
+
+        try:
+            x0 = update.message.text.split(' ')[1]
+            x1 = update.message.text.split(' ')[2]
+            new_X_INTERVAL = (float(x0), float(x1))
+            self.X_INTERVAL = new_X_INTERVAL
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f'New initial condition: X_INTERVAL={self.X_INTERVAL}')
+
+        except Exception as e:
+            logger.info(e)
+            logger.info(f'Can not set X_INTERVAL: {update.message.text}')
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f'Can not set X_INTERVAL: {update.message.text}. Example of correct syntax: "/set_x_interval 1 10.5"')
 
 
-def solve_ode(update, context):
+    def reset_settings(self, update, context):
 
-    logger.info(f'Receiving message: {update.message.text}')
-    status, eq, msg = check_ode(update.message.text)
-    context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
+        logger.info('Reset global variables')
+        self.Y0 = 1
+        self.X_INTERVAL = (0, 1)
 
-    if status == 0:
-        # everything is fine, you can solve ode
-        solver = OdeSolver(eq)
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f'Settings resetted: Y0 = {self.Y0}, X_INTERVAL = {self.X_INTERVAL}')
 
-        # equation feedback
-        msg = f"Python formatted equation: {solver.formatted_equation}"
+
+    def current_settings(self, update, context):
+        logger.info(f'Print current settings. Y0: {self.Y0}. X_INTERVAL: {self.X_INTERVAL}')
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f'Current settings are: Y0 = {self.Y0}. X_INTERVAL = {self.X_INTERVAL}')
+
+
+    def solve_ode(self, update, context):
+
+        logger.info(f'Receiving message: {update.message.text}')
+        status, eq, msg = self.check_ode(update.message.text)
         context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
-        # solve
-        logger.info(f'Solve ode: {solver.formatted_equation}')
-        y = solver.solve()
+        if status == 0:
+            # everything is fine, you can solve ode
+            solver = OdeSolver(eq, y0=self.Y0, x_interval=self.X_INTERVAL)
 
-        # plot
-        image_path = os.path.join(PLOT_PATH, 'tmp.png')
-        solver.plot(image_path)
+            # equation feedback
+            msg = f"Python formatted equation: {solver.formatted_equation}"
+            context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
-        # send the image
-        logger.info('Send image...')
-        context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(image_path, 'rb'))
+            # solve
+            logger.info(f'Solve ode: {solver.formatted_equation}')
 
-    return
+            # equation feedback
+            msg = f"Settings: Y0 = {self.Y0}, X_INTERVAL = {self.X_INTERVAL}"
+            context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
+            y = solver.solve()
+
+            # plot
+            image_path = os.path.join(PLOT_PATH, 'tmp.png')
+            solver.plot(image_path)
+
+            # send the image
+            logger.info('Send image...')
+            context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(image_path, 'rb'))
+
+        else:
+            # equation feedback
+            msg = "Somethig went wrong with equation...try again"
+            context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
+
+    def check_ode(self, ode_str: str):
+        '''Parse ode formula'''
+
+        ode_str = ode_str.replace(' ', '')
+
+        if ode_str.startswith("y'="):
+            return 0, ode_str, f"Your ODE: {ode_str}"
+        else:
+            logger.info("ODE formula should starts with y' ")
+            return 1, ode_str, "ODE formula should starts with y'= "
 
 
 
@@ -217,23 +238,28 @@ def main():
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher
 
+
+
     # --------------- Initialize handlers
-    start_handler = CommandHandler('start', start)
+
+    bot = OdeBot(Y0 = 1, X_INTERVAL = (0,5))
+
+    start_handler = CommandHandler('start', bot.start)
     dispatcher.add_handler(start_handler)
 
-    set_y0_handler = CommandHandler('set_y0', set_y0)
+    set_y0_handler = CommandHandler('set_y0', bot.set_y0)
     dispatcher.add_handler(set_y0_handler)
 
-    set_x_interval_handler = CommandHandler('set_x_interval', set_x_interval)
+    set_x_interval_handler = CommandHandler('set_x_interval', bot.set_x_interval)
     dispatcher.add_handler(set_x_interval_handler)
 
-    current_settings_handler = CommandHandler('current_settings', current_settings)
+    current_settings_handler = CommandHandler('current_settings', bot.current_settings)
     dispatcher.add_handler(current_settings_handler)
 
-    reset_handler = CommandHandler('reset', reset_setting)
+    reset_handler = CommandHandler('reset', bot.reset_settings)
     dispatcher.add_handler(reset_handler)
 
-    solver_handler = MessageHandler(Filters.text & (~Filters.command), solve_ode)
+    solver_handler = MessageHandler(Filters.text & (~Filters.command), bot.solve_ode)
     dispatcher.add_handler(solver_handler)
 
     # Start the Bot
