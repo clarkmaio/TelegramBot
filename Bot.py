@@ -6,6 +6,37 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Conve
 class Bot(object):
     @abstractmethod
     def _set_handlers(self) -> None:
+        '''
+        Create a dictionary with handlers that must be initialized and store in self._handlers
+
+        The dictionary MUSt have the structure:
+
+        {
+            handler_name_1: {
+                    'type': type_1,
+                    'fun': fun_1,
+                },
+
+            handler_name_2: {
+                    'type': type_2,
+                    'fun': fun_2,
+                }
+            ...
+            ...
+            ...
+        }
+
+        Where type must be one of 'command', 'message'
+        and fun are function that must be launched when in telegram chat command /handler_name is launched
+
+        Example:
+
+        def _set_handlers():
+            self._handlers = {
+                'start': {'type': 'command', 'fun': None}
+                }
+        '''
+
         raise NotImplementedError('Missing _set_handlers')
 
     @abstractmethod
