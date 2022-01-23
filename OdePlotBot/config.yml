@@ -1,0 +1,6 @@
+#
+# Config OdePlotBot
+#
+
+API: YOUR_API_KEY
+plot_path: PATH_TO_PLOT_FOLDER # aux path to save plot that will be sent

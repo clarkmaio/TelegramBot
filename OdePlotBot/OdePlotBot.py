@@ -13,16 +13,18 @@ import os
 import sympy as sp
 from copy import deepcopy, copy
 from scipy.integrate import odeint
+import yaml
 
 import logging
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
+from TelegramBot.Bot import Bot, BotRunner
+
+from telegram import Update
+from telegram.ext import CallbackContext
 
 
 # --------------------------------------------------------------
 # ------------------------- GLOBAL VAR -------------------------
 # --------------------------------------------------------------
-
-PLOT_PATH = 'C:\\Users\\pc\\workspace\\TelegramBot\\OdePlotBot\\plot'
 
 
 # Enable logging
@@ -35,27 +37,49 @@ logger = logging.getLogger(__name__)
 
 class OdeSolver(object):
     '''
-    Class to parse string starting with y' into a proper equation ready to apply discretization
-
-    :param y0: initial condition for x=0
-    :param x_interval: x axis plot interval
-    Example:
-        y'(x)=3*x+ 2*y(x)
-        ---> y(x+1) = -y(x) + 3*x + 2*y(x)
+    ODE solver.
+    Given a ode formula and inintial condition solve the ODE.
     '''
 
     def __init__(self, ode_str: str, y0: float = 1, x_interval: tuple = (0,1)):
+        '''
+       :param ode_str: equation formule as string
+       :param y0: initial condition for x=0
+       :param x_interval: x axis plot interval
+       Example:
+           y' = 3*x + 2
+           y0 = 1
+           x_interval = (-1, 1)
+       '''
 
-        self.equation = ode_str
-        self.y0 = y0
+        self._load_config()
+        self._set_equation_param(y0, x_interval)
+        self._set_equation_formula(ode_str)
+
+    def _load_config(self):
+        '''Load config'''
+        with open('.\config.yml') as file:
+            config = yaml.load(file, Loader=yaml.FullLoader)
+
+        self._config = config
+        self._plot_path = self._config['plot_path']
+
+    def _set_x_interval(self, x_interval: tuple):
         self.x_interval = x_interval
         self.x_interval_array = np.linspace(self.x_interval[0], self.x_interval[1])
 
-        # Format equation
-        self.formatted_equation = self._python_equation_formatter(eq = ode_str)
+    def _set_y0(self, y0: float):
+        self.y0 = y0
+
+    def _set_equation_param(self, y0: float, x_interval: tuple):
+        self._set_x_interval(x_interval)
+        self._set_y0(y0)
+
+    def _set_equation_formula(self, ode_str: str):
+        '''Store ode str and format'''
+        self.equation = ode_str
+        self.formatted_equation = self._python_equation_formatter(eq=ode_str)
         self.formatted_expression = self.formatted_equation.split('=')[1].replace(' ', '')
-
-
 
     def _python_equation_formatter(self, eq: str) -> str:
         '''
@@ -75,6 +99,7 @@ class OdeSolver(object):
         return formatted_eq
 
     def _symbol_map(self) -> dict:
+        '''Map main function in python syntax'''
 
         symbol_map = {
             'sin': 'np.sin',
@@ -91,18 +116,19 @@ class OdeSolver(object):
         return symbol_map
 
     def _model(self, x, y):
-        '''Equation evaluation'''
+        '''
+        Transform string expression into a proper python function
+        Return a function y'=f(x,y)
+        '''
         dydx = eval(self.formatted_expression)
         return dydx
 
     def solve(self):
         '''Equation solver'''
-        self.y = odeint(self._model, self.y0, self.x_interval_array)
+        self.y = odeint(self._model, self.y0, self.x_interval_array, tfirst=True)
         return self.y
 
-
-
-    def plot(self, image_path):
+    def plot(self, image_path: str):
         '''Generate plot and save tmp.png'''
 
         plt.plot(self.x_interval_array, self.y)
@@ -112,33 +138,54 @@ class OdeSolver(object):
         plt.close()
 
 
+class OdeBot(Bot):
 
-# ----------------------------------------------------------
-# ------------------------ HANDLERS ------------------------
-# ----------------------------------------------------------
-
-
-class OdeBot(object):
-
-    def __init__(self, Y0 = 1, X_INTERVAL = (0,5)):
+    def __init__(self, Y0: int = 1, X_INTERVAL: tuple = (0,5)):
 
         self.Y0 = Y0
         self.X_INTERVAL = X_INTERVAL
 
+        self._load_config()
+        self._set_handlers()
 
-    def _emoji(self):
+    def _load_config(self):
+        '''Load config'''
+        with open('.\config.yml') as file:
+            config = yaml.load(file, Loader=yaml.FullLoader)
+
+        self._config = config
+        self._API = self._config['API']
+        self._plot_path = self._config['plot_path']
+
+    def _emoji(self) -> str:
 
          emoji_str = '''
          ʕ•́ᴥ•̀ʔっ
          '''
          return emoji_str
 
-    def start(self, update, context):
+    def _start(self, update: Update, context: CallbackContext) -> None:
         context.bot.send_message(chat_id=update.effective_chat.id, text=self._emoji())
-        context.bot.send_message(chat_id=update.effective_chat.id, text="I'am OdePlotBot. Write down a first order ode to plot the solution \n ATTENTION: I can work only with equation of the following form: y'=f(x,y) \n Example: y' = cos(y)")
+        context.bot.send_message(chat_id=update.effective_chat.id, text="I'am OdePlot. Write down a first order ode to plot the solution.")
+        context.bot.send_message(chat_id=update.effective_chat.id, text="ATTENTION: I can work only with equation of the following form: y'=f(x,y)")
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Example: y' = cos(y)")
 
-    def set_y0(self, update, context):
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Here a recap of the commands you can run: "
+                                                                        "\n\t - /set_y0 _float_: set initial condition y(0). Example: /set_y0 2"
+                                                                        "\n\t - /set_x_interval _float_ _float_: set x axis boundaries you want to plot. Example /set_x_interval -5 3"
+                                                                        "\n\t - /current_settings: just print current ode settings "
+                                                                        "\n\t - /reset_settings: reset default settings y(0) = 1, x_interval = (0,1)")
 
+    def _help(self, update: Update, context: CallbackContext) -> None:
+        '''Recap commands'''
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Here a recap of the commands you can run: "
+                                                                        "\n\t - /set_y0 _float_: set initial condition y(0). Example: /set_y0 2"
+                                                                        "\n\t - /set_x_interval _float_ _float_: set x axis boundaries you want to plot. Example /set_x_interval -5 3"
+                                                                        "\n\t - /current_settings: just print current ode settings "
+                                                                        "\n\t - /reset_settings: reset default settings y(0) = 1, x_interval = (0,1)")
+
+    def _set_y0(self, update: Update, context: CallbackContext) -> None:
+        '''Store y0 param sent by user'''
         try:
             tmp = update.message.text.split(' ')[1]
             tmp = tmp.replace(' ', '')
@@ -151,8 +198,8 @@ class OdeBot(object):
             logger.info(f'Can not set Y0: {update.message.text}')
             context.bot.send_message(chat_id=update.effective_chat.id, text=f'Can not set Y0: {update.message.text}. Example of correct syntax: "/set_y0 3.5"')
 
-    def set_x_interval(self, update, context):
-
+    def _set_x_interval(self, update: Update, context: CallbackContext) -> None:
+        '''Store x_interval param sent by user'''
         try:
             x0 = update.message.text.split(' ')[1]
             x1 = update.message.text.split(' ')[2]
@@ -165,8 +212,7 @@ class OdeBot(object):
             logger.info(f'Can not set X_INTERVAL: {update.message.text}')
             context.bot.send_message(chat_id=update.effective_chat.id, text=f'Can not set X_INTERVAL: {update.message.text}. Example of correct syntax: "/set_x_interval 1 10.5"')
 
-
-    def reset_settings(self, update, context):
+    def _reset_settings(self, update: Update, context: CallbackContext) -> None:
 
         logger.info('Reset global variables')
         self.Y0 = 1
@@ -174,16 +220,16 @@ class OdeBot(object):
 
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'Settings resetted: Y0 = {self.Y0}, X_INTERVAL = {self.X_INTERVAL}')
 
-
-    def current_settings(self, update, context):
+    def _current_settings(self, update: Update, context: CallbackContext) -> None:
+        '''Print current settings'''
         logger.info(f'Print current settings. Y0: {self.Y0}. X_INTERVAL: {self.X_INTERVAL}')
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'Current settings are: Y0 = {self.Y0}. X_INTERVAL = {self.X_INTERVAL}')
 
-
-    def solve_ode(self, update, context):
+    def _solve_ode(self, update: Update, context: CallbackContext) -> None:
+        '''Solve ODE and send img back'''
 
         logger.info(f'Receiving message: {update.message.text}')
-        status, eq, msg = self.check_ode(update.message.text)
+        status, eq, msg = self._check_ode(update.message.text)
         context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
         if status == 0:
@@ -204,7 +250,7 @@ class OdeBot(object):
             y = solver.solve()
 
             # plot
-            image_path = os.path.join(PLOT_PATH, 'tmp.png')
+            image_path = os.path.join(self._plot_path, 'tmp.png')
             solver.plot(image_path)
 
             # send the image
@@ -216,7 +262,7 @@ class OdeBot(object):
             msg = "Somethig went wrong with equation...try again"
             context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
-    def check_ode(self, ode_str: str):
+    def _check_ode(self, ode_str: str):
         '''Parse ode formula'''
 
         ode_str = ode_str.replace(' ', '')
@@ -228,48 +274,31 @@ class OdeBot(object):
             return 1, ode_str, "ODE formula should starts with y'= "
 
 
+    def _set_handlers(self):
+
+        self._handlers = {
+            'start': {'type': 'command', 'fun': self._start},
+            'set_y0': {'type': 'command', 'fun': self._set_y0},
+            'set_x_interval': {'type': 'command', 'fun': self._set_x_interval},
+            'current_settings': {'type': 'command', 'fun': self._current_settings},
+            'reset_settings': {'type': 'command', 'fun': self._reset_settings},
+            'solver': {'type': 'message', 'fun': self._solve_ode},
+            'help': {'type': 'command', 'fun': self._help},
+        }
 
 def main():
     """Start the bot."""
 
-    # Initialize the updater
-    updater = Updater("2045130516:AAFo2MuDN_bCd0B8mJAOWq4voX-AKQxRiAU", use_context=True)
-
-    # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
-
-
-
-    # --------------- Initialize handlers
-
+    # Initialize bot
     bot = OdeBot(Y0 = 1, X_INTERVAL = (0,5))
 
-    start_handler = CommandHandler('start', bot.start)
-    dispatcher.add_handler(start_handler)
-
-    set_y0_handler = CommandHandler('set_y0', bot.set_y0)
-    dispatcher.add_handler(set_y0_handler)
-
-    set_x_interval_handler = CommandHandler('set_x_interval', bot.set_x_interval)
-    dispatcher.add_handler(set_x_interval_handler)
-
-    current_settings_handler = CommandHandler('current_settings', bot.current_settings)
-    dispatcher.add_handler(current_settings_handler)
-
-    reset_handler = CommandHandler('reset', bot.reset_settings)
-    dispatcher.add_handler(reset_handler)
-
-    solver_handler = MessageHandler(Filters.text & (~Filters.command), bot.solve_ode)
-    dispatcher.add_handler(solver_handler)
-
-    # Start the Bot
-    updater.start_polling()
+    # Initialize bot runner and run
+    bot_runner = BotRunner(bot)
+    bot_runner.run()
 
 
-    # Run the bot until you press Ctrl-C or the process receives SIGINT,
-    # SIGTERM or SIGABRT. This should be used most of the time, since
-    # start_polling() is non-blocking and will stop the bot gracefully.
-    updater.idle()
+
+
 
 
 
