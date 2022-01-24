@@ -40,8 +40,3 @@ bot_runner.run()
 
 ```
 
-
-## Repo Structure
-Each Bot code is stored in a different subfolder.
-In each subfolder must be created also a `config.yml` containing `API` key where Bot API will be stored.
-In this yaml file can be stored 
